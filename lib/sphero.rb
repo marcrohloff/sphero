@@ -92,6 +92,10 @@ class Sphero
     write Request::Sleep.new(@seq, limit2(wakeup), limit1(macro) )
   end
 
+  def motion_timeout= t
+    write Request::SetMotionTimeout.new(@seq, limit2(t) )
+  end
+
   def roll speed, heading, state = true
     write Request::Roll.new(@seq, limit1(speed), degrees(heading), flag(state) )
   end
@@ -148,11 +152,32 @@ class Sphero
   end
 
   # configure collision detection messages
-  def configure_collision_detection meth, x_t, y_t, x_spd, y_spd, dead
+  def configure_collision_detection( meth=1, x_t=120, y_t=120, x_spd=255, y_spd=255, dead=100 )
     write Request::ConfigureCollisionDetection.new(@seq, limit1(meth),
                                                          limit1(x_t),   limit1(y_t),
                                                          limit1(x_spd), limit1(y_spd),
                                                          limit1(dead) )
+  end
+
+  def process_messages(&block)
+    raise "#process_messages needs a block" unless block_given?
+
+    loop do
+
+      if messages.empty?
+        sleep 0
+        pump_messages
+        yield nil if messages.empty?
+
+      else
+        while ! messages.empty?
+          message = messages.pop
+          yield message
+        end
+
+      end
+
+    end
   end
 
   private
@@ -256,6 +281,28 @@ class Sphero
     else
       raise "Unable to write to Sphero!"
     end
+  end
+
+  def pump_messages
+    header, body = nil
+
+    return unless IO.select([@sp], [], [], 0)
+    header = read_header(true)
+    body = read_body(header.last, true) if header
+
+    # pick off asynch packets and store, till we get to the message response
+    while header && Response.async?(header)
+      messages << Response::AsyncResponse.response(header, body)
+
+      return unless IO.select([@sp], [], [], 0)
+      header = read_header(true)
+      if header
+        body = read_body(header.last, true)
+      else
+        body = nil
+      end
+    end
+
   end
 
   def read_header(blocking=false)

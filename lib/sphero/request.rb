@@ -101,6 +101,19 @@ class Sphero
       end
     end
 
+    class SetMotionTimeout < Sphero
+      def initialize seq, timeout
+        super(seq, [timeout])
+        @cid = 0x34
+      end
+
+      private
+
+      def packet_body
+        @data.pack 'n'
+      end
+    end
+
     class Sleep < Request
       def initialize seq, wakeup, macro
         super(seq, [wakeup, macro])
